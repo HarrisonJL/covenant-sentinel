@@ -30,6 +30,21 @@ State is fully auditable: `get_periods()` returns every period's raw disclosure 
 
 - **Address:** [`0x605cFCdc095D94951c0b9Ef16E769662Dd63253E`](https://explorer-bradbury.genlayer.com/address/0x605cFCdc095D94951c0b9Ef16E769662Dd63253E) on GenLayer Bradbury Testnet (chain id `4221`)
 - Source: [`contracts/covenant_sentinel.py`](contracts/covenant_sentinel.py)
+- The live instance already has one real covenant (`min_dscr`, DSCR ≥ 1.25x) and one real period submitted and passed through actual validator consensus - not seeded with mock data.
+
+## Frontend (`web/`)
+
+A dashboard for the facility: real-time status (current / breach / reporting default), the covenant list, a paginated period history showing each disclosure alongside its extracted figures and pass/fail verdict, and two wallet-gated forms - `add_covenant` (owner) and `submit_disclosure` (borrower) - with live consensus status while a transaction is in flight (validator addresses, leader, per-validator AGREE/DISAGREE as they're revealed).
+
+```bash
+cd web
+npm install
+npm run dev          # http://localhost:3000
+```
+
+`web/.env.local` needs `NEXT_PUBLIC_CONTRACT_ADDRESS` and `NEXT_PUBLIC_GENLAYER_CHAIN=bradbury` (see `.env.local.example`).
+
+Stack: Next.js 16 + React 19 + Tailwind v4 + TypeScript via `genlayer-js`, wallet connect via plain EIP-1193 (`window.ethereum`).
 
 ## Development
 

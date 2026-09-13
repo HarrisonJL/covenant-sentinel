@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0b0f14;
+  --surface: #11161d;
+  --surface-border: #232b36;
+  --foreground: #e6ebf1;
+  --muted: #8794a3;
+  --accent: #4f8cff;
+  --current: #34d399;
+  --breach: #f87171;
+  --reporting-default: #fbbf24;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+}
+
+.status-current {
+  color: var(--current);
+  background: color-mix(in srgb, var(--current) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--current) 35%, transparent);
+}
+
+.status-breach {
+  color: var(--breach);
+  background: color-mix(in srgb, var(--breach) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--breach) 35%, transparent);
+}
+
+.status-reporting_default {
+  color: var(--reporting-default);
+  background: color-mix(in srgb, var(--reporting-default) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--reporting-default) 35%, transparent);
+}
