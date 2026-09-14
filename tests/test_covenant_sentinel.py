@@ -118,6 +118,77 @@ def test_flag_reporting_default_before_deadline_fails(direct_vm, direct_deploy, 
         sentinel.flag_reporting_default()
 
 
+def test_submit_disclosure_accepts_strictly_advancing_period_ids(direct_vm, direct_deploy, direct_owner, direct_alice):
+    sentinel = _deploy(direct_vm, direct_deploy, direct_owner, direct_alice)
+    _add_dscr_covenant(direct_vm, sentinel, direct_owner)
+    direct_vm.mock_llm("debt covenant check", DSCR_OK)
+
+    direct_vm.sender = direct_alice
+    sentinel.submit_disclosure(1, "Q1 disclosure: DSCR was 1.5x.")
+    sentinel.submit_disclosure(2, "Q2 disclosure: DSCR was 1.5x.")
+
+    state = sentinel.get_state()
+    assert state["period_count"] == 2
+    assert state["last_period_id"] == 2
+
+
+def test_submit_disclosure_rejects_duplicate_period_id(direct_vm, direct_deploy, direct_owner, direct_alice):
+    # The bug this guards against: replaying the same period_id must not be
+    # accepted - a borrower could otherwise resubmit period 1 forever and
+    # never actually report a new period.
+    sentinel = _deploy(direct_vm, direct_deploy, direct_owner, direct_alice)
+    _add_dscr_covenant(direct_vm, sentinel, direct_owner)
+    direct_vm.mock_llm("debt covenant check", DSCR_OK)
+
+    direct_vm.sender = direct_alice
+    sentinel.submit_disclosure(1, "Q1 disclosure: DSCR was 1.5x.")
+
+    with pytest.raises(Exception):
+        sentinel.submit_disclosure(1, "Q1 disclosure again: still 1.5x.")
+
+    assert sentinel.get_state()["period_count"] == 1
+
+
+def test_submit_disclosure_rejects_non_advancing_period_id(direct_vm, direct_deploy, direct_owner, direct_alice):
+    # Not just literal duplicates - any period_id that doesn't strictly
+    # advance past the last accepted one must be rejected too (e.g.
+    # replaying an earlier period out of order).
+    sentinel = _deploy(direct_vm, direct_deploy, direct_owner, direct_alice)
+    _add_dscr_covenant(direct_vm, sentinel, direct_owner)
+    direct_vm.mock_llm("debt covenant check", DSCR_OK)
+
+    direct_vm.sender = direct_alice
+    sentinel.submit_disclosure(5, "Q5 disclosure: DSCR was 1.5x.")
+
+    with pytest.raises(Exception):
+        sentinel.submit_disclosure(3, "an earlier period, replayed out of order")
+
+    assert sentinel.get_state()["period_count"] == 1
+    assert sentinel.get_state()["last_period_id"] == 5
+
+
+def test_rejected_replay_does_not_update_last_report_time(direct_vm, direct_deploy, direct_owner, direct_alice):
+    # This is the actual exploit the steward flagged: even if the replay
+    # itself is rejected, a naive implementation could still bump
+    # last_report_time on the way to the assert failing. It must not -
+    # the deadline clock should be provably untouched by a rejected call.
+    sentinel = _deploy(direct_vm, direct_deploy, direct_owner, direct_alice)
+    _add_dscr_covenant(direct_vm, sentinel, direct_owner)
+    direct_vm.mock_llm("debt covenant check", DSCR_OK)
+
+    direct_vm.sender = direct_alice
+    sentinel.submit_disclosure(1, "Q1 disclosure: DSCR was 1.5x.")
+    report_time_after_valid_submit = sentinel.get_state()["last_report_time"]
+
+    with pytest.raises(Exception):
+        sentinel.submit_disclosure(1, "replaying period 1 to try to reset the clock")
+
+    state = sentinel.get_state()
+    assert state["last_report_time"] == report_time_after_valid_submit
+    assert state["last_period_id"] == 1
+    assert state["period_count"] == 1
+
+
 @pytest.mark.skip(
     reason=(
         "gltest 0.29.2's Direct Mode `direct_vm.warp()` never actually "

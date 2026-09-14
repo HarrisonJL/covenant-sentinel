@@ -20,7 +20,7 @@ Extracted values are basis-points-scaled integers (a DSCR of 1.25 becomes `12500
 
 1. Owner (the lender) deploys the contract with the borrower's address and a reporting deadline.
 2. Owner calls `add_covenant(name, metric, comparison, threshold_bps)` for each covenant, e.g. `add_covenant("min_dscr", "dscr", "gte", 12500)`.
-3. Each period, the borrower calls `submit_disclosure(period_id, disclosure_text)` with their plain-text disclosure. Every validator extracts the named metrics independently, and the contract checks each one against its threshold.
+3. Each period, the borrower calls `submit_disclosure(period_id, disclosure_text)` with their plain-text disclosure. `period_id` must strictly advance past the last accepted one - a duplicate or non-advancing ID reverts before any extraction work runs, so a borrower can't replay an old period to reset the reporting-deadline clock without ever actually reporting a new one. Every validator extracts the named metrics independently, and the contract checks each one against its threshold.
 4. If every covenant passes, the facility stays `current`. If any fails, it flips to `breach` - permanently, for this version; see Known limitations.
 5. If the borrower misses a reporting deadline entirely, anyone can call `flag_reporting_default()` once the deadline has elapsed, flipping the facility to `reporting_default`.
 
@@ -28,9 +28,10 @@ State is fully auditable: `get_periods()` returns every period's raw disclosure 
 
 ## Contract
 
-- **Address:** [`0x605cFCdc095D94951c0b9Ef16E769662Dd63253E`](https://explorer-bradbury.genlayer.com/address/0x605cFCdc095D94951c0b9Ef16E769662Dd63253E) on GenLayer Bradbury Testnet (chain id `4221`)
+- **Address:** [`0x60989e9737295e17Dad7DD4AeEE47822634049B6`](https://explorer-bradbury.genlayer.com/address/0x60989e9737295e17Dad7DD4AeEE47822634049B6) on GenLayer Bradbury Testnet (chain id `4221`)
 - Source: [`contracts/covenant_sentinel.py`](contracts/covenant_sentinel.py)
 - The live instance already has one real covenant (`min_dscr`, DSCR ≥ 1.25x) and one real period submitted and passed through actual validator consensus - not seeded with mock data.
+- Redeployed from the original submission to add replay/reporting-deadline-bypass protection (see Known limitations below) - the original address (`0x605cFCdc095D94951c0b9Ef16E769662Dd63253E`) is superseded.
 
 ## Frontend
 
@@ -55,6 +56,7 @@ Deploying a fresh instance: `npm install`, set `DEPLOYER_PRIVATE_KEY` and `BORRO
 - **Extraction quality depends on disclosure quality.** A well-structured disclosure with figures stated plainly extracts reliably. A disclosure that requires real inference to compute a metric (e.g. deriving DSCR from scattered EBITDA and debt-service figures elsewhere in a long document) is exactly the case `strict_eq` is meant to guard: if validators can't agree, the transaction fails rather than recording an unreliable number, but that also means a genuinely ambiguous disclosure can't be processed at all in this version.
 - **Single borrower per instance.** Each deployment monitors one facility. A syndicated or multi-tranche facility would need either multiple instances or an extended data model - left out of v1.
 - **GenVM version note:** confirmed that GenVM's calldata layer cannot encode Python `float` values across the nondet/consensus boundary (see Design above) - this shaped the basis-points integer design, not something to work around later.
+- **Reporting-deadline replay (fixed).** The original submission let `submit_disclosure` accept any `period_id` and unconditionally bumped `last_report_time` on every call, so a borrower could resubmit a duplicate or out-of-order period indefinitely and never trip `flag_reporting_default()`. Fixed by requiring `period_id` to strictly advance past `self.last_period_id` before any extraction work runs; a rejected replay reverts the whole transaction, so `last_report_time` is provably untouched. Covered by four new tests (`test_submit_disclosure_rejects_duplicate_period_id`, `test_submit_disclosure_rejects_non_advancing_period_id`, `test_rejected_replay_does_not_update_last_report_time`, `test_submit_disclosure_accepts_strictly_advancing_period_ids`).
 
 ## Relationship to GenLayer's own examples
 

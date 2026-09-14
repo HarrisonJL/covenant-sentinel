@@ -88,6 +88,7 @@ class CovenantSentinel(gl.Contract):
     periods: DynArray[PeriodResult]
     reporting_deadline_seconds: u32
     last_report_time: datetime.datetime
+    last_period_id: u32
     status: str  # "current" | "breach" | "reporting_default"
 
     def __init__(self, borrower: str, reporting_deadline_seconds: u32):
@@ -95,6 +96,7 @@ class CovenantSentinel(gl.Contract):
         self.borrower = Address(borrower)
         self.reporting_deadline_seconds = reporting_deadline_seconds
         self.last_report_time = _now()
+        self.last_period_id = u32(0)
         self.status = "current"
 
     @gl.public.write
@@ -115,6 +117,16 @@ class CovenantSentinel(gl.Contract):
         assert len(self.covenants) > 0, "no covenants defined yet"
         assert len(disclosure_text) > 0, "disclosure cannot be empty"
         assert len(disclosure_text) <= 4000, "disclosure too long (max 4000 chars)"
+        # Reject duplicate or non-advancing period IDs before doing any
+        # extraction work - replaying an old period (or resubmitting the
+        # same one) must never reach the last_report_time update below,
+        # otherwise a borrower could indefinitely stall
+        # flag_reporting_default() without ever reporting a genuinely new
+        # period. This check has to run before extraction, not just before
+        # the state writes, since asserting after an LLM call would still
+        # burn a real consensus round on a request that can never succeed.
+        assert period_id > self.last_period_id, \
+            f"period_id must advance past the last accepted period ({self.last_period_id})"
 
         metric_names = list({c.metric for c in self.covenants})
         extracted = _extract_metrics(disclosure_text, metric_names)
@@ -140,6 +152,7 @@ class CovenantSentinel(gl.Contract):
         record.all_passed = all_passed
         record.submitted_at = _now()
         self.last_report_time = _now()
+        self.last_period_id = period_id
 
         if not all_passed:
             self.status = "breach"
@@ -162,6 +175,7 @@ class CovenantSentinel(gl.Contract):
             "period_count": len(self.periods),
             "reporting_deadline_seconds": self.reporting_deadline_seconds,
             "last_report_time": self.last_report_time.isoformat(),
+            "last_period_id": self.last_period_id,
         }
 
     @gl.public.view
