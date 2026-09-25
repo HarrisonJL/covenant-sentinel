@@ -4,6 +4,10 @@ A debt-covenant monitor for tokenized RWA / private-credit facilities, built as 
 
 **Live on GenLayer's Bradbury testnet. Testnet only - no real value anywhere in this project.**
 
+## Milestone: v2 is now the current version
+
+**[`MILESTONE.md`](MILESTONE.md)** documents Covenant Sentinel v2, a Milestone update live on **GenLayer Studio Next** at [`0xeAfeD2A86317Db3Cd745ae2EbCB82549906bcDc7`](https://explorer-studio-dev.genlayer.com/address/0xeAfeD2A86317Db3Cd745ae2EbCB82549906bcDc7) - [`contracts/covenant_sentinel_v2.py`](contracts/covenant_sentinel_v2.py) / [`contracts/covenant_sentinel_v2_studio_next.py`](contracts/covenant_sentinel_v2_studio_next.py). It fixes the three things this README's own "Known limitations" named below: a lender-waiver + borrower-cure path out of a one-way breach, a tolerance-band validator replacing `strict_eq` (an ambiguous disclosure now reaches consensus as `INCONCLUSIVE` instead of failing to reach consensus at all), and `submit_disclosure_url` for a live-fetched disclosure. v1 below is kept exactly as originally submitted, for provenance - it is not being replaced, and its Bradbury deployment stays live as a separate, working instance.
+
 ## Why this needs GenLayer
 
 Covenant monitoring today is a manual, off-chain spreadsheet exercise: someone on the lender's side reads a disclosure and decides, by hand, whether the borrower is still in compliance. A plain EVM contract can't do this - it can't read a disclosure, extract a DSCR figure that might be stated directly or need computing from EBITDA and debt service mentioned elsewhere in the text, or apply any of the interpretive judgment that real-world financial disclosures require. And a single off-chain oracle that does this reintroduces exactly the trusted third party a covenant check is supposed to remove - whoever controls that oracle controls whether a real credit facility is in default.
@@ -26,7 +30,7 @@ Extracted values are basis-points-scaled integers (a DSCR of 1.25 becomes `12500
 
 State is fully auditable: `get_periods()` returns every period's raw disclosure text alongside the exact extracted JSON and the pass/fail verdict, so anyone can check the contract's math against the original disclosure.
 
-## Contract
+## v1 Contract (original Project submission, unchanged)
 
 - **Address:** [`0x60989e9737295e17Dad7DD4AeEE47822634049B6`](https://explorer-bradbury.genlayer.com/address/0x60989e9737295e17Dad7DD4AeEE47822634049B6) on GenLayer Bradbury Testnet (chain id `4221`)
 - Source: [`contracts/covenant_sentinel.py`](contracts/covenant_sentinel.py)
@@ -49,11 +53,11 @@ python -m pytest tests/ -v
 
 Deploying a fresh instance: `npm install`, set `DEPLOYER_PRIVATE_KEY` and `BORROWER_ADDRESS` in `.env` (gitignored, never commit a private key), then `npm run deploy` (add `DEPLOY_CHAIN=localnet` to target a local GLSim network first).
 
-## Known limitations
+## Known limitations (v1)
 
 - **Testnet only.** No real value anywhere in this project.
-- **v1 is a one-way breach.** Once a covenant fails, the facility stays in `breach` permanently - there's no cure/waiver path back to `current`. A real facility would need a lender-approved waiver method; left out of v1 to keep the primitive's state machine simple and auditable.
-- **Extraction quality depends on disclosure quality.** A well-structured disclosure with figures stated plainly extracts reliably. A disclosure that requires real inference to compute a metric (e.g. deriving DSCR from scattered EBITDA and debt-service figures elsewhere in a long document) is exactly the case `strict_eq` is meant to guard: if validators can't agree, the transaction fails rather than recording an unreliable number, but that also means a genuinely ambiguous disclosure can't be processed at all in this version.
+- **v1 is a one-way breach.** Once a covenant fails, the facility stays in `breach` permanently - there's no cure/waiver path back to `current`. A real facility would need a lender-approved waiver method; left out of v1 to keep the primitive's state machine simple and auditable. **Fixed in v2 - see [`MILESTONE.md`](MILESTONE.md).**
+- **Extraction quality depends on disclosure quality.** A well-structured disclosure with figures stated plainly extracts reliably. A disclosure that requires real inference to compute a metric (e.g. deriving DSCR from scattered EBITDA and debt-service figures elsewhere in a long document) is exactly the case `strict_eq` is meant to guard: if validators can't agree, the transaction fails rather than recording an unreliable number, but that also means a genuinely ambiguous disclosure can't be processed at all in this version. **Fixed in v2** with a tolerance-band custom validator - see [`MILESTONE.md`](MILESTONE.md).
 - **Single borrower per instance.** Each deployment monitors one facility. A syndicated or multi-tranche facility would need either multiple instances or an extended data model - left out of v1.
 - **GenVM version note:** confirmed that GenVM's calldata layer cannot encode Python `float` values across the nondet/consensus boundary (see Design above) - this shaped the basis-points integer design, not something to work around later.
 - **Reporting-deadline replay (fixed).** The original submission let `submit_disclosure` accept any `period_id` and unconditionally bumped `last_report_time` on every call, so a borrower could resubmit a duplicate or out-of-order period indefinitely and never trip `flag_reporting_default()`. Fixed by requiring `period_id` to strictly advance past `self.last_period_id` before any extraction work runs; a rejected replay reverts the whole transaction, so `last_report_time` is provably untouched. Covered by four new tests (`test_submit_disclosure_rejects_duplicate_period_id`, `test_submit_disclosure_rejects_non_advancing_period_id`, `test_rejected_replay_does_not_update_last_report_time`, `test_submit_disclosure_accepts_strictly_advancing_period_ids`).
